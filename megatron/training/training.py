@@ -17,7 +17,7 @@ import time
 # The earliest we can measure the start time.
 _TRAIN_START_TIME = time.time()
 import torch
-
+import torch_npu
 from megatron.core import mpu, tensor_parallel
 from megatron.core.utils import check_param_hashes_across_dp_replicas, get_model_config, StragglerDetector
 from megatron.training.checkpointing import load_checkpoint
@@ -999,6 +999,8 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
             })
 
     while iteration < args.train_iters:
+        torch_npu._C._npu_init_sync_record()
+        start_step_time = time.time()
         if args.profile and \
            iteration == args.profile_step_start and \
            torch.distributed.get_rank() in args.profile_ranks:
@@ -1039,6 +1041,10 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
         num_floating_point_operations_so_far += num_fp_ops
         total_flops += num_fp_ops
 
+        train_step_time=time.time()
+        sync_step_time=torch_npu._C._npu_finish_sync_record()
+        print_rank_0("E2E train time {:.3f} ms".format((train_step_time-start_step_time)*1000))
+        print_rank_0("sync time {:.3f} ms".format((sync_step_time)/1000000))
         # Logging.
         loss_scale = optimizer.get_loss_scale().item()
         params_norm = None
